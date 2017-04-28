@@ -11,15 +11,22 @@ struct Particle
 	float4 velocity;	// w = life time;
 };
 
-cbuffer Constants : register(b0)
+cbuffer CPUConstants : register(b0)
 {
 	float	deltaTime;
-	uint	emitterCount;
 	uint	maxParticles;
-	uint	numParticles;
 }
 
-StructuredBuffer<Emitter> emitters : register(t0);
+cbuffer GPUConstants : register(b1)
+{
+	uint	deadParticles;
+	uint3	_padding;
+}
+
+cbuffer Emitter : register(b2)
+{
+
+}
 
 RWStructuredBuffer<Particle> particles : register(u0);
 

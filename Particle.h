@@ -1,25 +1,38 @@
-#pragma once
+#if defined(__cplusplus)
 
+#pragma once
 #include <DirectXMath.h>
+typedef DirectX::XMFLOAT4	float4;
+typedef uint32_t			uint;
+
+#define CBUFFER				struct
+#define REGISTER(x)			/* empty */
+
+#else
+
+#define CBUFFER				cbuffer
+#define REGISTER(x)			: register(x)
+
+#endif
 
 #define MAX_EMITTERS 1024
 
-struct ParticleSystemArgs
+CBUFFER ParticleSystemArgs REGISTER(b0)
 {
 	float		deltaTime;
-	uint32_t	emitterCount;
-	uint32_t	maxParticles;
-	uint32_t	numParticles;
+	uint		emitterCount;
+	uint		maxParticles;
+	uint		numParticles;
 };
 
-struct Emitter
+CBUFFER Emitter REGISTER(b2)
 {
-	DirectX::XMFLOAT4	position;	// w = 0.0 (initial age)
-	DirectX::XMFLOAT4	velocity;	// w = life time
+	float4		position;	// w = 0.0 (initial age)
+	float4		velocity;	// w = life time
 };
 
 struct Particle
 {
-	DirectX::XMFLOAT4	position;	// w = age
-	DirectX::XMFLOAT4	velocity;	// w = life time
+	float4		position;	// w = age
+	float4		velocity;	// w = life time
 };
