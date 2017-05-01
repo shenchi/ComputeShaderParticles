@@ -6,7 +6,7 @@
 #include "Entity.h"
 #include "Camera.h"
 #include "Material.h"
-#include "Lights.h"
+#include "Lights.h"//
 #include "Particle.h"
 #include <DirectXMath.h>
 #include <vector>
