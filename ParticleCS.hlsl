@@ -10,6 +10,7 @@ cbuffer Constants : register(b0)
 {
 	float	deltaTime;
 	uint	maxParticles;
+	uint2	_padding;
 }
 
 [numthreads(1024, 1, 1)]

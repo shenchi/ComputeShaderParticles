@@ -6,10 +6,15 @@
 #include "Entity.h"
 #include "Camera.h"
 #include "Material.h"
-#include "Lights.h"//
+#include "Lights.h"
+#include "Emitter.h"
 #include "Particle.h"
 #include <DirectXMath.h>
 #include <vector>
+
+#if defined(_DEBUG)
+#include <DXProgrammableCapture.h>
+#endif
 
 class Game 
 	: public DXCore
@@ -61,17 +66,29 @@ private:
 	Material* material1;
 	Material* material2;
 
+#if defined(_DEBUG)
+	// Debug
+	IDXGraphicsAnalysis*			frameCapture;
+	bool							frameCaptureInited;
+	uint							frameCaptureCount;
+#endif
+
 	// Particles
-	ParticleSystemArgs				particleArgs;
+	struct {
+		float						deltaTime;
+		uint32_t					maxParticles;
+		uint32_t					_padding1;
+		uint32_t					_padding2;
+	}								particleConstants;
 	Emitter							emitters[MAX_EMITTERS];
+	uint32_t						emitterCount;
 	ID3D11Buffer*					bufQuadIndices;
 	ID3D11Buffer*					bufIndirectDrawArgs;
-	ID3D11Buffer*					bufParticleArgs;
-	ID3D11Buffer*					bufEmitters;
+	ID3D11Buffer*					bufParticleConstants;
+	ID3D11Buffer*					bufEmitter;
 	ID3D11Buffer*					bufParticles;
 	ID3D11Buffer*					bufDeadList;
 	ID3D11Buffer*					bufDrawList;
-	ID3D11ShaderResourceView*		bufEmittersSRV;
 	ID3D11UnorderedAccessView*		bufParticlesUAV;
 	ID3D11ShaderResourceView*		bufParticlesSRV;
 	ID3D11UnorderedAccessView*		bufDeadListUAV;

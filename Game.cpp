@@ -2,6 +2,13 @@
 #include "Vertex.h"
 #include "Particle.h"
 
+#if defined(_DEBUG)
+#include <dxgitype.h>
+#include <dxgi1_2.h>
+#include <dxgi1_3.h>
+#pragma comment(lib, "dxgi.lib")
+#endif
+
 #include <WICTextureLoader.h>
 
 // For the DirectX Math library
@@ -56,6 +63,9 @@ Game::~Game()
 
 	// meshes will be release by its destructor
 
+	if (frameCaptureInited)
+		frameCapture->Release();
+
 	delete particleEmitterCS;
 	delete particleCS;
 	delete particlePS;
@@ -66,12 +76,11 @@ Game::~Game()
 	bufDeadListUAV->Release();
 	bufParticlesSRV->Release();
 	bufParticlesUAV->Release();
-	bufEmittersSRV->Release();
 	bufDrawList->Release();
 	bufDeadList->Release();
 	bufParticles->Release();
-	bufEmitters->Release();
-	bufParticleArgs->Release();
+	bufEmitter->Release();
+	bufParticleConstants->Release();
 	bufIndirectDrawArgs->Release();
 	bufQuadIndices->Release();
 
@@ -427,7 +436,18 @@ void Game::InitParticles()
 {
 	HRESULT hr = S_OK;
 
-	particleArgs.maxParticles = 100;
+#if defined(_DEBUG)
+	hr = DXGIGetDebugInterface1(0, IID_PPV_ARGS(&frameCapture));
+	frameCaptureInited = (hr == S_OK);
+
+	if (frameCaptureInited)
+		frameCaptureCount = 10;
+	else
+		frameCaptureCount = 0;
+#endif
+
+
+	particleConstants.maxParticles = 100;
 
 	{
 		CD3D11_BUFFER_DESC indicesDesc(
@@ -463,25 +483,23 @@ void Game::InitParticles()
 		assert(hr == S_OK);
 	}
 
-	CD3D11_BUFFER_DESC cbDesc(sizeof(ParticleSystemArgs), D3D11_BIND_CONSTANT_BUFFER);
-	hr = device->CreateBuffer(&cbDesc, nullptr, &bufParticleArgs);
+	CD3D11_BUFFER_DESC cbDesc(sizeof(particleConstants), D3D11_BIND_CONSTANT_BUFFER);
+	hr = device->CreateBuffer(&cbDesc, nullptr, &bufParticleConstants);
 	assert(hr == S_OK);
 
 	CD3D11_BUFFER_DESC bufEmittersDesc
 	(
-		sizeof(emitters),
-		D3D11_BIND_SHADER_RESOURCE,
-		D3D11_USAGE_DEFAULT,
-		0,//D3D11_CPU_ACCESS_WRITE,
-		D3D11_RESOURCE_MISC_BUFFER_STRUCTURED,
-		sizeof(Emitter)
+		sizeof(Emitter),
+		D3D11_BIND_CONSTANT_BUFFER,
+		D3D11_USAGE_DYNAMIC,
+		D3D11_CPU_ACCESS_WRITE
 	);
 
-	hr = device->CreateBuffer(&bufEmittersDesc, nullptr, &bufEmitters);
+	hr = device->CreateBuffer(&bufEmittersDesc, nullptr, &bufEmitter);
 	assert(hr == S_OK);
 
 	CD3D11_BUFFER_DESC bufDesc(
-		particleArgs.maxParticles * sizeof(Particle),
+		particleConstants.maxParticles * sizeof(Particle),
 		D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE,
 		D3D11_USAGE_DEFAULT,
 		0,
@@ -494,7 +512,7 @@ void Game::InitParticles()
 
 	bufDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
 	bufDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	bufDesc.ByteWidth = particleArgs.maxParticles * sizeof(uint32_t);
+	bufDesc.ByteWidth = particleConstants.maxParticles * sizeof(uint32_t);
 	bufDesc.StructureByteStride = sizeof(uint32_t);
 
 	hr = device->CreateBuffer(&bufDesc, nullptr, &bufDeadList);
@@ -505,13 +523,10 @@ void Game::InitParticles()
 	hr = device->CreateBuffer(&bufDesc, nullptr, &bufDrawList);
 	assert(hr == S_OK);
 
-	hr = device->CreateShaderResourceView(bufEmitters, nullptr, &bufEmittersSRV);
-	assert(hr == S_OK);
-
 	CD3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc(
 		(ID3D11Buffer*)nullptr,
 		DXGI_FORMAT_UNKNOWN,
-		0, particleArgs.maxParticles,
+		0, particleConstants.maxParticles,
 		D3D11_BUFFER_UAV_FLAG_APPEND
 	);
 
@@ -536,7 +551,7 @@ void Game::InitParticles()
 	particleCS->SetUnorderedAccessView("particles", bufParticlesUAV);
 	particleCS->SetUnorderedAccessView("deadList", bufDeadListUAV);
 	particleCS->SetShader();
-	context->Dispatch((particleArgs.maxParticles + 1023) / 1024, 1, 1);
+	context->Dispatch((particleConstants.maxParticles + 1023) / 1024, 1, 1);
 	{
 		ID3D11UnorderedAccessView* nullUAV = nullptr;
 		uint32_t val = D3D11_KEEP_UNORDERED_ACCESS_VIEWS;
@@ -562,28 +577,33 @@ void Game::InitParticles()
 	particlePS = new SimplePixelShader(device, context);
 	assert(particlePS->LoadShaderFile(L"Assets/Shaders/ParticlePS.cso"));
 
+	emitterCount = 2;
+
 	emitters[0].position = XMFLOAT4(-1.0f, 0.0f, 0.0f, 0.0f);
-	emitters[0].velocity = XMFLOAT4(0.0f, 1.0f, 0.0f, 2.0f);
+	emitters[0].velocity = XMFLOAT4(0.0f, 0.4f, 0.0f, 2.0f);
+	emitters[0].emitCount = 0;
+	emitters[0].deadParticles = 0;
+	emitters[0].emitRate = 10;
+	emitters[0].counter = 0;
 
 	emitters[1].position = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
 	emitters[1].velocity = XMFLOAT4(0.0f, 1.0f, 0.0f, 2.0f);
+	emitters[1].emitCount = 0;
+	emitters[1].deadParticles = 0;
+	emitters[1].emitRate = 10;
+	emitters[1].counter = 0;
 
 	{
 		D3D11_MAPPED_SUBRESOURCE data = {};
 
-		context->UpdateSubresource(bufEmitters, 0, nullptr, emitters, 2 * sizeof(Emitter), 2 * sizeof(Emitter));
+		context->UpdateSubresource(bufEmitter, 0, nullptr, emitters, 2 * sizeof(Emitter), 2 * sizeof(Emitter));
 		/*assert(S_OK == context->Map(bufEmitters, 0, D3D11_MAP_WRITE_DISCARD, 0, &data));
 		memcpy(data.pData, emitters, 2 * sizeof(Emitter));
 		context->Unmap(bufEmitters, 0);*/
 	}
 
-	particleArgs.emitterCount = 2;
 
-	particleCS->SetInt("maxParticles", particleArgs.maxParticles);
-	particleCS->SetInt("emitterCount", particleArgs.emitterCount);
-
-	particleEmitterCS->SetInt("maxParticles", particleArgs.maxParticles);
-	particleEmitterCS->SetInt("emitterCount", particleArgs.emitterCount);
+	particleCS->SetInt("maxParticles", particleConstants.maxParticles);
 
 	particleFirstUpdate = true;
 	frameCount = 0;
@@ -591,33 +611,64 @@ void Game::InitParticles()
 
 void Game::UpdateParticles(float deltaTime)
 {
-	particleArgs.deltaTime = deltaTime;
+	particleConstants.deltaTime = deltaTime;
 
-	particleEmitterCS->SetShaderResourceView("emitters", bufEmittersSRV);
-	particleEmitterCS->SetUnorderedAccessView("particles", bufParticlesUAV);
-	if (particleFirstUpdate)
-	{
-		particleEmitterCS->SetUnorderedAccessView("deadList", bufDeadListUAV, particleArgs.maxParticles);
-		particleFirstUpdate = false;
-	}
-	else
-	{
-		particleEmitterCS->SetUnorderedAccessView("deadList", bufDeadListUAV);
-	}
-
-	particleEmitterCS->SetFloat("deltaTime", particleArgs.deltaTime);
 	particleEmitterCS->SetShader();
-	particleEmitterCS->CopyAllBufferData();
-	particleEmitterCS->DispatchByThreads(particleArgs.emitterCount, 1, 1);
+	particleEmitterCS->SetFloat("deltaTime", particleConstants.deltaTime);
+
+	for (uint32_t i = 0; i < emitterCount; i++)
+	{
+		emitters[i].counter += deltaTime * emitters[i].emitRate;
+		emitters[i].emitCount = static_cast<uint32_t>(emitters[i].counter); // floor of uint
+		emitters[i].counter -= emitters[i].emitCount;
+
+		if (0 == emitters[i].emitCount)
+			continue;
+
+#if defined(_DEBUG)
+		if (frameCaptureCount > 0)
+		{
+			frameCapture->BeginCapture();
+		}
+#endif
+		particleEmitterCS->SetFloat4("position", emitters[i].position);
+		particleEmitterCS->SetFloat4("velocity", emitters[i].velocity);
+		particleEmitterCS->SetInt("emitCount", emitters[i].emitCount);
+
+		if (particleFirstUpdate)
+		{
+			particleEmitterCS->SetUnorderedAccessView("deadList", bufDeadListUAV, particleConstants.maxParticles);
+			particleEmitterCS->SetInt("deadParticles", particleConstants.maxParticles);
+			particleFirstUpdate = false;
+		}
+		else
+		{
+			particleEmitterCS->SetUnorderedAccessView("deadList", bufDeadListUAV);
+			context->CopyStructureCount(bufEmitter, offsetof(Emitter, deadParticles), bufDeadListUAV);
+		}
+		particleEmitterCS->SetUnorderedAccessView("particles", bufParticlesUAV);
+
+		particleEmitterCS->CopyAllBufferData();
+		particleEmitterCS->DispatchByThreads(emitters[i].emitCount, 1, 1);
+
+#if defined(_DEBUG)
+		if (frameCaptureCount > 0)
+		{
+			frameCapture->EndCapture();
+			frameCaptureCount--;
+		}
+#endif
+	}
+
 
 	particleCS->SetUnorderedAccessView("particles", bufParticlesUAV);
 	particleCS->SetUnorderedAccessView("deadList", bufDeadListUAV);
 	particleCS->SetUnorderedAccessView("drawList", bufDrawListUAV, 0);
 
-	particleCS->SetFloat("deltaTime", particleArgs.deltaTime);
+	particleCS->SetFloat("deltaTime", particleConstants.deltaTime);
 	particleCS->SetShader();
 	particleCS->CopyAllBufferData();
-	particleCS->DispatchByThreads(particleArgs.maxParticles, 1, 1);
+	particleCS->DispatchByThreads(particleConstants.maxParticles, 1, 1);
 
 	{
 		ID3D11UnorderedAccessView* nulls[] = { nullptr, nullptr, nullptr };
@@ -690,8 +741,8 @@ void Game::Update(float deltaTime, float totalTime)
 	entities[4].SetRotation(0.0f, 0.0f, -totalTime * 5);
 
 	entities[5].SetRotation(totalTime, 0.0f, 0.0f);
-	
-	//if (frameCount <= 50)
+
+	//if (frameCount <= 1000)
 	{
 		UpdateParticles(deltaTime);
 	}
