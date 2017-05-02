@@ -242,6 +242,7 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <None Include="Noise.hlsli" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

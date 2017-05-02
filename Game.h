@@ -46,7 +46,7 @@ private:
 	void InitLights(); 
 	void InitParticles();
 
-	void UpdateParticles(float deltaTime);
+	void UpdateParticles(float deltaTime, float totalTime);
 
 	//// Buffers to hold actual geometry data
 	//ID3D11Buffer* vertexBuffer;

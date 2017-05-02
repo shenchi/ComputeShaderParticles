@@ -609,12 +609,13 @@ void Game::InitParticles()
 	frameCount = 0;
 }
 
-void Game::UpdateParticles(float deltaTime)
+void Game::UpdateParticles(float deltaTime, float totalTime)
 {
 	particleConstants.deltaTime = deltaTime;
 
 	particleEmitterCS->SetShader();
 	particleEmitterCS->SetFloat("deltaTime", particleConstants.deltaTime);
+	particleEmitterCS->SetFloat("totalTime", totalTime);
 
 	for (uint32_t i = 0; i < emitterCount; i++)
 	{
@@ -744,7 +745,7 @@ void Game::Update(float deltaTime, float totalTime)
 
 	//if (frameCount <= 1000)
 	{
-		UpdateParticles(deltaTime);
+		UpdateParticles(deltaTime, totalTime);
 	}
 }
 
