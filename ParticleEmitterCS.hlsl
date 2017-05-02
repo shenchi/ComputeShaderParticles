@@ -6,14 +6,6 @@ RWStructuredBuffer<Particle> particles : register(u0);
 
 ConsumeStructuredBuffer<uint> deadList : register(u1);
 
-cbuffer Constants : register(b1)
-{
-	float	deltaTime;
-	float	totalTime;
-	uint	maxParticles;
-	uint	_padding;
-}
-
 [numthreads(1024, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {

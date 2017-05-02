@@ -10,4 +10,6 @@ CBUFFER Emitter REGISTER(b0)
 	uint		deadParticles;
 	float		emitRate;	// particles per second
 	float		counter;	//
+	float		totalTime;	// total time elapsed since the start. Need for noise generation
+	uint3		_padding;
 };

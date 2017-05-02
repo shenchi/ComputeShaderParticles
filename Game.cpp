@@ -585,6 +585,7 @@ void Game::InitParticles()
 	emitters[0].deadParticles = 0;
 	emitters[0].emitRate = 10;
 	emitters[0].counter = 0;
+	emitters[0].totalTime = 0;
 
 	emitters[1].position = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
 	emitters[1].velocity = XMFLOAT4(0.0f, 1.0f, 0.0f, 2.0f);
@@ -592,6 +593,7 @@ void Game::InitParticles()
 	emitters[1].deadParticles = 0;
 	emitters[1].emitRate = 10;
 	emitters[1].counter = 0;
+	emitters[1].totalTime = 0;
 
 	{
 		D3D11_MAPPED_SUBRESOURCE data = {};
@@ -614,7 +616,6 @@ void Game::UpdateParticles(float deltaTime, float totalTime)
 	particleConstants.deltaTime = deltaTime;
 
 	particleEmitterCS->SetShader();
-	particleEmitterCS->SetFloat("deltaTime", particleConstants.deltaTime);
 	particleEmitterCS->SetFloat("totalTime", totalTime);
 
 	for (uint32_t i = 0; i < emitterCount; i++)
