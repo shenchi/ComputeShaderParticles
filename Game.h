@@ -82,23 +82,8 @@ private:
 	}								particleConstants;
 	Emitter							emitters[MAX_EMITTERS];
 	uint32_t						emitterCount;
-	ID3D11Buffer*					bufQuadIndices;
-	ID3D11Buffer*					bufIndirectDrawArgs;
-	ID3D11Buffer*					bufParticleConstants;
-	ID3D11Buffer*					bufEmitter;
-	ID3D11Buffer*					bufParticles;
-	ID3D11Buffer*					bufDeadList;
-	ID3D11Buffer*					bufDrawList;
-	ID3D11UnorderedAccessView*		bufParticlesUAV;
-	ID3D11ShaderResourceView*		bufParticlesSRV;
-	ID3D11UnorderedAccessView*		bufDeadListUAV;
-	ID3D11UnorderedAccessView*		bufDrawListUAV;
-	ID3D11ShaderResourceView*		bufDrawListSRV;
-	SimpleVertexShader*				particleVS;
-	SimplePixelShader*				particlePS;
-	SimpleComputeShader*			particleCS;
-	SimpleComputeShader*			particleEmitterCS;
-	bool							particleFirstUpdate;
+	
+	
 	int								frameCount;
 
 	// Lights
