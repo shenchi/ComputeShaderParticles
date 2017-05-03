@@ -4,7 +4,9 @@
 
 #include <WICTextureLoader.h>
 
-bool ParticleSystem::Init()
+#include "FrameCapture.h"
+
+bool ParticleSystem::Init(ID3D11Device* device, ID3D11DeviceContext* context)
 {
 	HRESULT hr = S_OK;
 
@@ -57,28 +59,216 @@ bool ParticleSystem::Init()
 		assert(hr == S_OK);
 	}
 
+	{
+		auto info = particleEmitterCS->GetBufferInfo("Emitter");
+		bufEmitter = info->ConstantBuffer;
+	}
 
-	CD3D11_BUFFER_DESC bufEmittersDesc
-	(
-		sizeof(Emitter),
-		D3D11_BIND_CONSTANT_BUFFER,
-		D3D11_USAGE_DYNAMIC,
-		D3D11_CPU_ACCESS_WRITE
-	);
+	{
+		D3D11_SAMPLER_DESC desc = {};
+		desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+		desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+		desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+		desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+		desc.MaxLOD = D3D11_FLOAT32_MAX;
+		hr = device->CreateSamplerState(&desc, &sampler);
+		assert(hr == S_OK);
 
-	hr = device->CreateBuffer(&bufEmittersDesc, nullptr, &bufEmitter);
-	assert(hr == S_OK);
+		CD3D11_BLEND_DESC blendDesc(D3D11_DEFAULT);
+		blendDesc.RenderTarget[0].BlendEnable = TRUE;
+		blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+		blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+		hr = device->CreateBlendState(&blendDesc, &blendState);
+		assert(hr == S_OK);
+
+		CD3D11_DEPTH_STENCIL_DESC depthStencilDesc(D3D11_DEFAULT);
+		depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		hr = device->CreateDepthStencilState(&depthStencilDesc, &depthStencilState);
+		assert(hr == S_OK);
+	}
+
+	this->device = device;
+	this->context = context;
 
 	return true;
 }
 
-bool ParticleSystem::CleanUp()
+void ParticleSystem::Update(float deltaTime, float totalTime)
 {
-	return false;
+	totalEmitCount = 0;
+	for (auto iPool = pools.begin(); iPool != pools.end(); ++iPool)
+	{
+		ParticlePool& pool = *iPool;
+		for (auto iEmitter = pool.emitters.begin(); iEmitter != pool.emitters.end(); ++iEmitter)
+		{
+			Emitter& emitter = *iEmitter;
+			emitter.counter += deltaTime * emitter.emitRate;
+			emitter.emitCount = static_cast<uint32_t>(emitter.counter); // floor of uint
+			emitter.counter -= emitter.emitCount;
+			totalEmitCount += emitter.emitCount;
+		}
+	}
+
+	if (totalEmitCount > 0)
+	{
+		FrameCapture::instance()->BeginCapture();
+
+		particleEmitterCS->SetShader();
+		particleEmitterCS->SetFloat("totalTime", totalTime);
+
+		for (auto iPool = pools.begin(); iPool != pools.end(); ++iPool)
+		{
+			ParticlePool& pool = *iPool;
+			particleEmitterCS->SetUnorderedAccessView("particles", pool.bufParticlesUAV);
+
+			for (auto iEmitter = pool.emitters.begin(); iEmitter != pool.emitters.end(); ++iEmitter)
+			{
+				Emitter& emitter = *iEmitter;
+
+				if (0 == emitter.emitCount)
+					continue;
+
+				particleEmitterCS->SetFloat4("position", emitter.position);
+				particleEmitterCS->SetFloat4("velocity", emitter.velocity);
+				particleEmitterCS->SetInt("emitCount", emitter.emitCount);
+
+				if (pool.particleFirstUpdate)
+				{
+					particleEmitterCS->SetUnorderedAccessView("deadList", pool.bufDeadListUAV, pool.particleConstants.maxParticles);
+					particleEmitterCS->SetInt("deadParticles", pool.particleConstants.maxParticles);
+					particleEmitterCS->CopyAllBufferData();
+					pool.particleFirstUpdate = false;
+				}
+				else
+				{
+					particleEmitterCS->CopyAllBufferData();
+					particleEmitterCS->SetUnorderedAccessView("deadList", pool.bufDeadListUAV);
+					context->CopyStructureCount(bufEmitter, offsetof(Emitter, deadParticles), pool.bufDeadListUAV);
+				}
+
+				particleEmitterCS->DispatchByThreads(emitter.emitCount, 1, 1);
+			}
+		}
+
+		FrameCapture::instance()->EndCapture();
+	}
+
+	if (!pools.empty())
+	{
+		particleCS->SetShader();
+		particleCS->SetFloat("deltaTime", deltaTime);
+
+		for (auto iPool = pools.begin(); iPool != pools.end(); ++iPool)
+		{
+			ParticlePool& pool = *iPool;
+
+			particleCS->SetInt("maxParticles", pool.particleConstants.maxParticles);
+			particleCS->SetUnorderedAccessView("particles", pool.bufParticlesUAV);
+			particleCS->SetUnorderedAccessView("deadList", pool.bufDeadListUAV);
+			particleCS->SetUnorderedAccessView("drawList", pool.bufDrawListUAV, 0);
+
+			particleCS->CopyAllBufferData();
+			particleCS->DispatchByThreads(pool.particleConstants.maxParticles, 1, 1);
+		}
+
+		ID3D11UnorderedAccessView* nulls[] = { nullptr, nullptr, nullptr };
+		uint32_t initVals[] = { -1, -1, -1 };
+		context->CSSetUnorderedAccessViews(0, 3, nulls, initVals);
+	}
 }
 
-bool ParticleSystem::InitParticlePool(uint32_t maxParticles, const std::wstring& texFileName)
+bool ParticleSystem::Draw(const DirectX::XMFLOAT4X4& matView, const DirectX::XMFLOAT4X4& matProj)
 {
+	if (totalEmitCount > 0)
+		FrameCapture::instance()->BeginCapture();
+
+	if (!pools.empty())
+	{
+		context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		context->IASetInputLayout(nullptr);
+		context->IASetIndexBuffer(bufQuadIndices, DXGI_FORMAT_R32_UINT, 0);
+
+		context->OMSetBlendState(blendState, nullptr, 0xffffffff);
+		context->OMSetDepthStencilState(depthStencilState, 0);
+
+		particleVS->SetShader();
+		particlePS->SetShader();
+
+		particleVS->SetMatrix4x4("view", matView);
+		particleVS->SetMatrix4x4("projection", matProj);
+		particleVS->CopyAllBufferData();
+
+		particlePS->SetSamplerState("samp", sampler);
+
+		for (auto iPool = pools.begin(); iPool != pools.end(); ++iPool)
+		{
+			ParticlePool& pool = *iPool;
+
+			particleVS->SetShaderResourceView("particles", pool.bufParticlesSRV);
+			particleVS->SetShaderResourceView("drawList", pool.bufDrawListSRV);
+
+			particlePS->SetShaderResourceView("tex", pool.texSRV);
+
+			context->CopyStructureCount(bufIndirectDrawArgs, 4, pool.bufDrawListUAV);
+			context->CopyStructureCount(bufIndirectDrawArgs, 24, pool.bufDeadListUAV);
+
+			context->DrawIndexedInstancedIndirect(bufIndirectDrawArgs, 0);
+		}
+
+		{
+			ID3D11ShaderResourceView* nulls[] = { nullptr, nullptr, nullptr };
+			context->VSSetShaderResources(0, 3, nulls);
+		}
+	}
+
+	if (totalEmitCount > 0)
+		FrameCapture::instance()->EndCapture();
+
+	return true;
+}
+
+void ParticleSystem::CleanUp()
+{
+	for (auto i = pools.begin(); i != pools.end(); ++i)
+	{
+		i->CleanUp();
+	}
+
+	pools.clear();
+	poolMap.clear();
+
+	delete particleVS;
+	delete particlePS;
+	delete particleInitCS;
+	delete particleEmitterCS;
+	delete particleCS;
+
+	bufQuadIndices->Release();
+	bufIndirectDrawArgs->Release();
+	sampler->Release();
+}
+
+ParticleEmitter* ParticleSystem::CreateParticleEmitter(const std::wstring & particleTexture)
+{
+	if (poolMap.find(particleTexture) == poolMap.end())
+	{
+		assert(true == CreateParticlePool(1024, particleTexture));
+	}
+
+	uint32_t poolIdx = poolMap[particleTexture];
+	ParticlePool& pool = pools[poolIdx];
+
+	uint32_t emitterIdx = pool.emitters.size();
+	pool.emitters.push_back(Emitter());
+
+	return new ParticleEmitter(this, poolIdx, emitterIdx);
+}
+
+bool ParticleSystem::CreateParticlePool(uint32_t maxParticles, const std::wstring& texFileName)
+{
+	if (poolMap.find(texFileName) != poolMap.end())
+		return false;
+
 	ParticlePool pool;
 	pool.particleConstants.maxParticles = maxParticles;
 
@@ -156,7 +346,9 @@ bool ParticleSystem::InitParticlePool(uint32_t maxParticles, const std::wstring&
 
 	pool.particleFirstUpdate = true;
 
-	
+	uint32_t idx = pools.size();
+	pools.push_back(pool);
+	poolMap.insert(std::pair<std::wstring, uint32_t>{texFileName, idx});
 
-	return false;
+	return true;
 }

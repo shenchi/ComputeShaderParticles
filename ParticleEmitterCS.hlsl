@@ -13,7 +13,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	{
 		uint pid = deadList.Consume();
 
-		particles[pid].position = float4(snoise(float2(position.x, totalTime)), snoise(float2(position.y, totalTime)), snoise(float2(position.z, totalTime)), position.w);
+		particles[pid].position = position;
+		particles[pid].position.xyz += float3(snoise(float2(position.x, totalTime)), 0/*snoise(float2(position.y, totalTime))*/, snoise(float2(position.z, totalTime)));
 		particles[pid].velocity = velocity;
 	}
 }

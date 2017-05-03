@@ -7,14 +7,9 @@
 #include "Camera.h"
 #include "Material.h"
 #include "Lights.h"
-#include "Emitter.h"
-#include "Particle.h"
+#include "ParticleSystem.h"
 #include <DirectXMath.h>
 #include <vector>
-
-#if defined(_DEBUG)
-#include <DXProgrammableCapture.h>
-#endif
 
 class Game 
 	: public DXCore
@@ -66,24 +61,10 @@ private:
 	Material* material1;
 	Material* material2;
 
-#if defined(_DEBUG)
-	// Debug
-	IDXGraphicsAnalysis*			frameCapture;
-	bool							frameCaptureInited;
-	uint							frameCaptureCount;
-#endif
-
 	// Particles
-	struct {
-		float						deltaTime;
-		uint32_t					maxParticles;
-		uint32_t					_padding1;
-		uint32_t					_padding2;
-	}								particleConstants;
-	Emitter							emitters[MAX_EMITTERS];
-	uint32_t						emitterCount;
-	
-	
+	ParticleSystem					particleSystem;
+	ParticleEmitter*				emitter1;
+	ParticleEmitter*				emitter2;
 	int								frameCount;
 
 	// Lights

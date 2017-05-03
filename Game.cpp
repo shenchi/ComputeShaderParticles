@@ -2,12 +2,7 @@
 #include "Vertex.h"
 #include "Particle.h"
 
-#if defined(_DEBUG)
-#include <dxgitype.h>
-#include <dxgi1_2.h>
-#include <dxgi1_3.h>
-#pragma comment(lib, "dxgi.lib")
-#endif
+#include "FrameCapture.h"
 
 #include <WICTextureLoader.h>
 
@@ -61,28 +56,13 @@ Game::~Game()
 	//if (vertexBuffer) { vertexBuffer->Release(); }
 	//if (indexBuffer) { indexBuffer->Release(); }
 
+	FrameCapture::instance()->Release();
+
 	// meshes will be release by its destructor
 
-	if (frameCaptureInited)
-		frameCapture->Release();
-
-	delete particleEmitterCS;
-	delete particleCS;
-	delete particlePS;
-	delete particleVS;
-
-	bufDrawListSRV->Release();
-	bufDrawListUAV->Release();
-	bufDeadListUAV->Release();
-	bufParticlesSRV->Release();
-	bufParticlesUAV->Release();
-	bufDrawList->Release();
-	bufDeadList->Release();
-	bufParticles->Release();
-	bufEmitter->Release();
-	bufParticleConstants->Release();
-	bufIndirectDrawArgs->Release();
-	bufQuadIndices->Release();
+	delete emitter1;
+	delete emitter2;
+	particleSystem.CleanUp();
 
 	// destroy materials
 	delete material1;
@@ -437,115 +417,34 @@ void Game::InitParticles()
 	HRESULT hr = S_OK;
 
 #if defined(_DEBUG)
-	hr = DXGIGetDebugInterface1(0, IID_PPV_ARGS(&frameCapture));
-	frameCaptureInited = (hr == S_OK);
-
-	if (frameCaptureInited)
-		frameCaptureCount = 10;
-	else
-		frameCaptureCount = 0;
+	FrameCapture::instance()->SetFramesToCapture(20);
 #endif
 
+	assert(true == particleSystem.Init(device, context));
 
+	emitter1 = particleSystem.CreateParticleEmitter(L"Assets/Textures/smoke.png");
+	emitter2 = particleSystem.CreateParticleEmitter(L"Assets/Textures/smoke.png");
 
-	emitterCount = 2;
+	emitter1->SetParameters(
+		XMFLOAT3(-1.0f, 0.0f, 0.0f),
+		XMFLOAT3(0.0f, 0.4f, 0.0f),
+		2.0f,
+		10.0f
+	);
 
-	emitters[0].position = XMFLOAT4(-1.0f, 0.0f, 0.0f, 0.0f);
-	emitters[0].velocity = XMFLOAT4(0.0f, 0.4f, 0.0f, 2.0f);
-	emitters[0].emitCount = 0;
-	emitters[0].deadParticles = 0;
-	emitters[0].emitRate = 10;
-	emitters[0].counter = 0;
-	emitters[0].totalTime = 0;
-
-	emitters[1].position = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
-	emitters[1].velocity = XMFLOAT4(0.0f, 1.0f, 0.0f, 2.0f);
-	emitters[1].emitCount = 0;
-	emitters[1].deadParticles = 0;
-	emitters[1].emitRate = 10;
-	emitters[1].counter = 0;
-	emitters[1].totalTime = 0;
-
-	{
-		//D3D11_MAPPED_SUBRESOURCE data = {};
-
-		//context->UpdateSubresource(bufEmitter, 0, nullptr, emitters, 2 * sizeof(Emitter), 2 * sizeof(Emitter));
-		/*assert(S_OK == context->Map(bufEmitters, 0, D3D11_MAP_WRITE_DISCARD, 0, &data));
-		memcpy(data.pData, emitters, 2 * sizeof(Emitter));
-		context->Unmap(bufEmitters, 0);*/
-	}
-
-
+	emitter2->SetParameters(
+		XMFLOAT3(1.0f, 0.0f, 0.0f),
+		XMFLOAT3(0.0f, 1.0f, 0.0f),
+		2.0f,
+		10.0f
+	);
 
 	frameCount = 0;
 }
 
 void Game::UpdateParticles(float deltaTime, float totalTime)
 {
-	particleConstants.deltaTime = deltaTime;
-
-	particleEmitterCS->SetShader();
-	particleEmitterCS->SetFloat("totalTime", totalTime);
-
-	for (uint32_t i = 0; i < emitterCount; i++)
-	{
-		emitters[i].counter += deltaTime * emitters[i].emitRate;
-		emitters[i].emitCount = static_cast<uint32_t>(emitters[i].counter); // floor of uint
-		emitters[i].counter -= emitters[i].emitCount;
-
-		if (0 == emitters[i].emitCount)
-			continue;
-
-#if defined(_DEBUG)
-		if (frameCaptureCount > 0)
-		{
-			frameCapture->BeginCapture();
-		}
-#endif
-		particleEmitterCS->SetFloat4("position", emitters[i].position);
-		particleEmitterCS->SetFloat4("velocity", emitters[i].velocity);
-		particleEmitterCS->SetInt("emitCount", emitters[i].emitCount);
-
-		if (particleFirstUpdate)
-		{
-			particleEmitterCS->SetUnorderedAccessView("deadList", bufDeadListUAV, particleConstants.maxParticles);
-			particleEmitterCS->SetInt("deadParticles", particleConstants.maxParticles);
-			particleFirstUpdate = false;
-		}
-		else
-		{
-			particleEmitterCS->SetUnorderedAccessView("deadList", bufDeadListUAV);
-			context->CopyStructureCount(bufEmitter, offsetof(Emitter, deadParticles), bufDeadListUAV);
-		}
-		particleEmitterCS->SetUnorderedAccessView("particles", bufParticlesUAV);
-
-		particleEmitterCS->CopyAllBufferData();
-		particleEmitterCS->DispatchByThreads(emitters[i].emitCount, 1, 1);
-
-#if defined(_DEBUG)
-		if (frameCaptureCount > 0)
-		{
-			frameCapture->EndCapture();
-			frameCaptureCount--;
-		}
-#endif
-	}
-
-
-	particleCS->SetUnorderedAccessView("particles", bufParticlesUAV);
-	particleCS->SetUnorderedAccessView("deadList", bufDeadListUAV);
-	particleCS->SetUnorderedAccessView("drawList", bufDrawListUAV, 0);
-
-	particleCS->SetFloat("deltaTime", particleConstants.deltaTime);
-	particleCS->SetShader();
-	particleCS->CopyAllBufferData();
-	particleCS->DispatchByThreads(particleConstants.maxParticles, 1, 1);
-
-	{
-		ID3D11UnorderedAccessView* nulls[] = { nullptr, nullptr, nullptr };
-		uint32_t initVals[] = { -1, -1, -1 };
-		context->CSSetUnorderedAccessViews(0, 3, nulls, initVals);
-	}
+	particleSystem.Update(deltaTime, totalTime);
 
 	frameCount++;
 }
@@ -626,7 +525,7 @@ void Game::Draw(float deltaTime, float totalTime)
 {
 	// Background color (Cornflower Blue in this case) for clearing
 	//const float color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
-	const float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	const float color[4] = { 0.7f, 0.7f, 0.7f, 1.0f };
 
 	// Clear the render target and depth buffer (erases what's on the screen)
 	//  - Do this ONCE PER FRAME
@@ -673,27 +572,8 @@ void Game::Draw(float deltaTime, float totalTime)
 	//}
 
 	// Particle System
+	particleSystem.Draw(camera.GetViewMatrix(), camera.GetProjectionMatrix());
 
-	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	context->IASetInputLayout(nullptr);
-	context->IASetIndexBuffer(bufQuadIndices, DXGI_FORMAT_R32_UINT, 0);
-	particleVS->SetShaderResourceView("particles", bufParticlesSRV);
-	particleVS->SetShaderResourceView("drawList", bufDrawListSRV);
-	particleVS->SetMatrix4x4("view", camera.GetViewMatrix());
-	particleVS->SetMatrix4x4("projection", camera.GetProjectionMatrix());
-	particleVS->CopyAllBufferData();
-	particleVS->SetShader();
-
-	particlePS->SetShader();
-
-	context->CopyStructureCount(bufIndirectDrawArgs, 4, bufDrawListUAV);
-	context->CopyStructureCount(bufIndirectDrawArgs, 24, bufDeadListUAV);
-	context->DrawIndexedInstancedIndirect(bufIndirectDrawArgs, 0);
-	//context->DrawIndexedInstanced(6, 100, 0, 0, 0);
-	{
-		ID3D11ShaderResourceView* nulls[] = { nullptr, nullptr, nullptr };
-		context->VSSetShaderResources(0, 3, nulls);
-	}
 
 	// Present the back buffer to the user
 	//  - Puts the final frame we're drawing into the window so the user can see it

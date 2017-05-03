@@ -3,6 +3,7 @@
 #include <d3d11.h>
 #include "SimpleShader.h"
 #include "ParticlePool.h"
+#include "ParticleEmitter.h"
 
 #include <string>
 #include <unordered_map>
@@ -11,22 +12,30 @@
 class ParticleSystem
 {
 public:
-	ParticleSystem(ID3D11Device* device, ID3D11DeviceContext* context)
+	ParticleSystem()
 		:
-		device(device),
-		context(context),
+		device(nullptr),
+		context(nullptr),
 		particleVS(nullptr),
 		particlePS(nullptr),
 		particleCS(nullptr),
 		particleEmitterCS(nullptr)
 	{}
 
-	bool Init();
+	bool Init(ID3D11Device* device, ID3D11DeviceContext* context);
 
-	bool CleanUp();
+	void Update(float deltaTime, float totalTime);
+
+	bool Draw(const DirectX::XMFLOAT4X4& matView, const DirectX::XMFLOAT4X4& matProj);
+
+	void CleanUp();
+
+	ParticleEmitter* CreateParticleEmitter(const std::wstring& particleTexture);
 
 private:
-	bool InitParticlePool(uint32_t maxParticles, const std::wstring& texFileName);
+	friend class ParticleEmitter;
+
+	bool CreateParticlePool(uint32_t maxParticles, const std::wstring& texFileName);
 
 private:
 	ID3D11Device*					device;
@@ -38,12 +47,19 @@ private:
 	SimpleComputeShader*			particleEmitterCS;
 	SimpleComputeShader*			particleCS;
 
+	ID3D11Buffer*					bufEmitter;
+
 	ID3D11Buffer*					bufQuadIndices;
 	ID3D11Buffer*					bufIndirectDrawArgs;
-	ID3D11Buffer*					bufEmitter;
+
+	ID3D11SamplerState*				sampler;
+	ID3D11BlendState*				blendState;
+	ID3D11DepthStencilState*		depthStencilState;
 
 	typedef std::unordered_map<std::wstring, uint32_t> map_t;
 	map_t							poolMap;
 
 	std::vector<ParticlePool>		pools;
+
+	uint32_t						totalEmitCount;
 };

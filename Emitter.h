@@ -1,3 +1,6 @@
+#ifndef _EMITTER_
+#define _EMITTER_
+
 #include "ShaderCommon.h"
 
 #define MAX_EMITTERS 1024
@@ -13,3 +16,5 @@ CBUFFER Emitter REGISTER(b0)
 	float		totalTime;	// total time elapsed since the start. Need for noise generation
 	uint3		_padding;
 };
+
+#endif

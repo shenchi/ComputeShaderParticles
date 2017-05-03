@@ -122,9 +122,11 @@
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="DXCore.cpp" />
     <ClCompile Include="Entity.cpp" />
+    <ClCompile Include="FrameCapture.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Mesh.cpp" />
+    <ClCompile Include="ParticleEmitter.cpp" />
     <ClCompile Include="ParticlePool.cpp" />
     <ClCompile Include="ParticleSystem.cpp" />
     <ClCompile Include="SimpleShader.cpp" />
@@ -134,6 +136,7 @@
     <ClInclude Include="DXCore.h" />
     <ClInclude Include="Emitter.h" />
     <ClInclude Include="Entity.h" />
+    <ClInclude Include="FrameCapture.h" />
     <ClInclude Include="Game.h" />
     <ClInclude Include="Lights.h" />
     <ClInclude Include="Material.h" />

@@ -3,6 +3,10 @@
 #include <d3d11.h>
 #include <DirectXMath.h>
 
+#include <vector>
+
+#include "Emitter.h"
+
 struct ParticlePool
 {
 	struct {
@@ -24,6 +28,7 @@ struct ParticlePool
 	ID3D11ShaderResourceView*		texSRV;
 	bool							particleFirstUpdate;
 
-	bool Init(ID3D11Device* device, ID3D11DeviceContext* context);
+	std::vector<Emitter>			emitters;
+
 	void CleanUp();
 };

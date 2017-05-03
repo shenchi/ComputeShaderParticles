@@ -1,10 +1,15 @@
 #include "ParticlePool.h"
 
-bool ParticlePool::Init(ID3D11Device * device, ID3D11DeviceContext * context)
-{
-	return false;
-}
-
 void ParticlePool::CleanUp()
 {
+	bufParticleConstants->Release();
+	bufParticles->Release();
+	bufDeadList->Release();
+	bufDrawList->Release();
+	bufParticlesUAV->Release();
+	bufParticlesSRV->Release();
+	bufDeadListUAV->Release();
+	bufDrawListUAV->Release();
+	bufDrawListSRV->Release();
+	texSRV->Release();
 }
