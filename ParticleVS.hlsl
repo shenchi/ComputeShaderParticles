@@ -31,8 +31,8 @@ V2F main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 
 	pos = mul(pos, view);
 
-	float2 uv = float2(vid % 2 - 0.5, vid / 2 - 0.5);
-	pos.xy += uv * 0.1;
+	float2 uv = float2(vid % 2, vid / 2);
+	pos.xy += (uv - 0.5) * 1;
 
 	output.position = mul(pos, projection);
 	output.texcoord = uv;
